@@ -35,27 +35,27 @@
             z-index: 10;
         }
 
-        /* --- YENİ EKLENEN ZAFER EKRANI STİLLERİ --- */
+        /* --- ZAFER EKRANI --- */
         #victory-screen {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.85); /* Arkası hafif görünen koyu zemin */
-            display: none; /* Başlangıçta gizli */
+            background: rgba(0, 0, 0, 0.85); 
+            display: none; 
             flex-direction: column;
             justify-content: center;
             align-items: center;
             color: white;
-            z-index: 100; /* En üstte görünsün */
+            z-index: 100; 
             text-align: center;
-            cursor: pointer; /* Tıklanabilir olduğunu göster */
+            cursor: pointer; 
         }
         
         #big-kiss {
             font-size: 150px;
-            animation: pulse 1.5s infinite ease-in-out; /* Kalp atışı efekti */
+            animation: pulse 1.5s infinite ease-in-out; 
             margin-bottom: 20px;
         }
 
@@ -72,7 +72,6 @@
             color: #ccc;
         }
 
-        /* Öpücük animasyonu */
         @keyframes pulse {
             0% { transform: scale(1); }
             50% { transform: scale(1.2); }
@@ -102,7 +101,7 @@
     canvas.width = screenWidth;
     canvas.height = screenHeight;
 
-    // Resim Yükleme Sistemi
+    // Resimler
     const playerImg = new Image();
     playerImg.src = 'kiz.png'; 
     
@@ -110,8 +109,10 @@
     goalImg.src = 'ben.png';   
 
     // Oyun Değişkenleri
-    let gameWon = false; // Oyun kazanıldı mı kontrolü
-    const gravity = 0.6;
+    let gameWon = false; 
+    
+    // --- FİZİK GÜNCELLEMESİ (DAHA KOLAY) ---
+    const gravity = 0.5; // Yerçekimi azaltıldı (daha yavaş düşüş)
     let keys = {};
     let isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
@@ -119,39 +120,50 @@
         document.getElementById('mobile-jump').style.display = 'flex';
     }
 
-    // -- OYUNCU (KIZ) --
+    // -- OYUNCU AYARLARI --
     const player = {
         x: 100,
         y: 300,
         width: 60,
         height: 60,
         dy: 0,
-        jumpPower: -13,
+        jumpPower: -16, // Zıplama gücü ARTIRILDI (Eskisi -13 tü)
         grounded: false,
-        speed: 5,
+        speed: 6,      // Hız biraz artırıldı
         color: '#FF6F91'
     };
 
     let cameraX = 0;
 
-    // -- BÖLÜM TASARIMI --
+    // -- KOLAYLAŞTIRILMIŞ BÖLÜM TASARIMI --
     const blocks = [
-        {x: 0, y: screenHeight - 100, w: 800, h: 100, type: 1},
-        {x: 900, y: screenHeight - 250, w: 200, h: 40, type: 1},
-        {x: 1200, y: screenHeight - 400, w: 200, h: 40, type: 1},
-        {x: 1200, y: screenHeight - 50, w: 800, h: 50, type: 2}, // Lav
-        {x: 1600, y: screenHeight - 250, w: 150, h: 40, type: 1},
-        {x: 1900, y: screenHeight - 150, w: 300, h: 150, type: 1},
-        {x: 2300, y: screenHeight - 300, w: 100, h: 40, type: 1},
-        {x: 2500, y: screenHeight - 450, w: 100, h: 40, type: 1},
-        {x: 2800, y: screenHeight - 300, w: 100, h: 40, type: 1},
-        {x: 3000, y: screenHeight - 200, w: 500, h: 200, type: 1}, // Bitiş platformu
+        // Başlangıç - Uzun güvenli alan
+        {x: 0, y: screenHeight - 100, w: 1000, h: 100, type: 1},
+        
+        // İlk platform (Çok yakın)
+        {x: 1100, y: screenHeight - 200, w: 250, h: 40, type: 1},
+        
+        // İkinci platform (Hafif yukarı)
+        {x: 1450, y: screenHeight - 300, w: 250, h: 40, type: 1},
+        
+        // Ateş Çukuru (Küçültüldü ve geçmesi kolay)
+        {x: 1400, y: screenHeight - 50, w: 600, h: 50, type: 2}, 
+        
+        // Üçüncü platform (Güvenli iniş)
+        {x: 1800, y: screenHeight - 200, w: 300, h: 40, type: 1},
+
+        // Merdiven gibi kolay çıkış
+        {x: 2200, y: screenHeight - 300, w: 150, h: 40, type: 1},
+        {x: 2400, y: screenHeight - 400, w: 150, h: 40, type: 1},
+        
+        // Final Platformu (Yakınlaştırıldı)
+        {x: 2600, y: screenHeight - 250, w: 600, h: 250, type: 1}, 
     ];
 
-    // HEDEF (SEN)
+    // HEDEF (SEN) - Daha yakına alındı
     const goal = {
-        x: 3300, 
-        y: screenHeight - 300,
+        x: 2900, 
+        y: screenHeight - 350,
         w: 80,
         h: 80
     };
@@ -175,7 +187,6 @@
         }
     });
 
-    // ZAFER EKRANINA TIKLAYINCA RESETLE
     victoryScreen.addEventListener('click', () => {
         victoryScreen.style.display = 'none';
         gameWon = false;
@@ -184,30 +195,21 @@
 
     // -- OYUN DÖNGÜSÜ --
     function update() {
-        // Eğer oyun kazanıldıysa fiziği durdur, sadece çizim yap
         if (!gameWon) {
-            // Hareket
             if (keys['ArrowRight']) player.x += player.speed;
             if (keys['ArrowLeft']) player.x -= player.speed;
 
-            // Fizik
             player.dy += gravity;
             player.y += player.dy;
             player.grounded = false;
 
-            // Düşme kontrolü
             if (player.y > screenHeight) resetGame();
 
-            // Çarpışma Testi
             checkCollisions();
         }
 
-        // Kamera Takibi
         if (player.x > screenWidth * 0.4) {
             cameraX = player.x - screenWidth * 0.4;
-        } else if (player.x < screenWidth * 0.4 && cameraX > 0){
-             // Geri giderken kamera takibi (isteğe bağlı)
-             // cameraX = player.x - screenWidth * 0.4;
         }
 
         draw();
@@ -243,15 +245,12 @@
             }
         });
 
-        // --- HEDEFE ULAŞMA ANI (ZAFER!) ---
         if (player.x < goal.x + goal.w &&
             player.x + player.width > goal.x &&
             player.y < goal.y + goal.h &&
             player.y + player.height > goal.y) {
             
-            // Oyunu kazanmış say
             gameWon = true;
-            // Zafer ekranını göster
             victoryScreen.style.display = 'flex';
         }
     }
@@ -260,8 +259,6 @@
         player.x = 100;
         player.y = 300;
         player.dy = 0;
-        // Kamera hemen başa dönmesin, yumuşak geçiş için bırakabiliriz veya sıfırlayabiliriz.
-        // Şimdilik sıfırlıyoruz:
         cameraX = 0; 
     }
 
@@ -342,7 +339,6 @@
              ctx.font = "20px Segoe UI";
              ctx.fillText("Yön Tuşları ile İlerle, Boşluk ile Zıpla", 20, 40);
         }
-       
     }
 
     window.addEventListener('resize', () => {
@@ -354,7 +350,7 @@
     });
 
     update();
-
 </script>
 </body>
 </html>
+
