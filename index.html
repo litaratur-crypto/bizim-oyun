@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bize Özel Maceramız</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #333;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+        }
+        /* Mobilde zıplama butonu */
+        #mobile-jump {
+            position: absolute;
+            bottom: 30px;
+            right: 30px;
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border: 2px solid white;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-weight: bold;
+            user-select: none;
+            z-index: 10;
+        }
+
+        /* --- YENİ EKLENEN ZAFER EKRANI STİLLERİ --- */
+        #victory-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85); /* Arkası hafif görünen koyu zemin */
+            display: none; /* Başlangıçta gizli */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 100; /* En üstte görünsün */
+            text-align: center;
+            cursor: pointer; /* Tıklanabilir olduğunu göster */
+        }
+        
+        #big-kiss {
+            font-size: 150px;
+            animation: pulse 1.5s infinite ease-in-out; /* Kalp atışı efekti */
+            margin-bottom: 20px;
+        }
+
+        #victory-text {
+            font-size: 60px;
+            font-weight: bold;
+            color: #FF6F91;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #restart-hint {
+            margin-top: 30px;
+            font-size: 18px;
+            color: #ccc;
+        }
+
+        /* Öpücük animasyonu */
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body>
+
+<div id="victory-screen">
+    <div id="big-kiss">💋</div>
+    <div id="victory-text">BAŞARDIN!</div>
+    <div id="restart-hint">(Tekrar oynamak için ekrana dokun)</div>
+</div>
+
+<div id="mobile-jump">ZIPLA</div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const victoryScreen = document.getElementById('victory-screen');
+
+    // -- AYARLAR --
+    let screenWidth = window.innerWidth;
+    let screenHeight = window.innerHeight;
+    canvas.width = screenWidth;
+    canvas.height = screenHeight;
+
+    // Resim Yükleme Sistemi
+    const playerImg = new Image();
+    playerImg.src = 'kiz.png'; 
+    
+    const goalImg = new Image();
+    goalImg.src = 'ben.png';   
+
+    // Oyun Değişkenleri
+    let gameWon = false; // Oyun kazanıldı mı kontrolü
+    const gravity = 0.6;
+    let keys = {};
+    let isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    if (isMobile) {
+        document.getElementById('mobile-jump').style.display = 'flex';
+    }
+
+    // -- OYUNCU (KIZ) --
+    const player = {
+        x: 100,
+        y: 300,
+        width: 60,
+        height: 60,
+        dy: 0,
+        jumpPower: -13,
+        grounded: false,
+        speed: 5,
+        color: '#FF6F91'
+    };
+
+    let cameraX = 0;
+
+    // -- BÖLÜM TASARIMI --
+    const blocks = [
+        {x: 0, y: screenHeight - 100, w: 800, h: 100, type: 1},
+        {x: 900, y: screenHeight - 250, w: 200, h: 40, type: 1},
+        {x: 1200, y: screenHeight - 400, w: 200, h: 40, type: 1},
+        {x: 1200, y: screenHeight - 50, w: 800, h: 50, type: 2}, // Lav
+        {x: 1600, y: screenHeight - 250, w: 150, h: 40, type: 1},
+        {x: 1900, y: screenHeight - 150, w: 300, h: 150, type: 1},
+        {x: 2300, y: screenHeight - 300, w: 100, h: 40, type: 1},
+        {x: 2500, y: screenHeight - 450, w: 100, h: 40, type: 1},
+        {x: 2800, y: screenHeight - 300, w: 100, h: 40, type: 1},
+        {x: 3000, y: screenHeight - 200, w: 500, h: 200, type: 1}, // Bitiş platformu
+    ];
+
+    // HEDEF (SEN)
+    const goal = {
+        x: 3300, 
+        y: screenHeight - 300,
+        w: 80,
+        h: 80
+    };
+
+    // -- KONTROLLER --
+    window.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+        if ((e.code === 'Space' || e.code === 'ArrowUp') && player.grounded && !gameWon) {
+            player.dy = player.jumpPower;
+            player.grounded = false;
+        }
+    });
+
+    window.addEventListener('keyup', (e) => keys[e.code] = false);
+
+    document.getElementById('mobile-jump').addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (player.grounded && !gameWon) {
+            player.dy = player.jumpPower;
+            player.grounded = false;
+        }
+    });
+
+    // ZAFER EKRANINA TIKLAYINCA RESETLE
+    victoryScreen.addEventListener('click', () => {
+        victoryScreen.style.display = 'none';
+        gameWon = false;
+        resetGame();
+    });
+
+    // -- OYUN DÖNGÜSÜ --
+    function update() {
+        // Eğer oyun kazanıldıysa fiziği durdur, sadece çizim yap
+        if (!gameWon) {
+            // Hareket
+            if (keys['ArrowRight']) player.x += player.speed;
+            if (keys['ArrowLeft']) player.x -= player.speed;
+
+            // Fizik
+            player.dy += gravity;
+            player.y += player.dy;
+            player.grounded = false;
+
+            // Düşme kontrolü
+            if (player.y > screenHeight) resetGame();
+
+            // Çarpışma Testi
+            checkCollisions();
+        }
+
+        // Kamera Takibi
+        if (player.x > screenWidth * 0.4) {
+            cameraX = player.x - screenWidth * 0.4;
+        } else if (player.x < screenWidth * 0.4 && cameraX > 0){
+             // Geri giderken kamera takibi (isteğe bağlı)
+             // cameraX = player.x - screenWidth * 0.4;
+        }
+
+        draw();
+        requestAnimationFrame(update);
+    }
+
+    function checkCollisions() {
+        blocks.forEach(block => {
+            if (player.x < block.x + block.w &&
+                player.x + player.width > block.x &&
+                player.y < block.y + block.h &&
+                player.y + player.height > block.y) {
+                
+                if (block.type === 2) {
+                    resetGame();
+                } else {
+                    if (player.dy > 0 && player.y + player.height - player.dy <= block.y) {
+                        player.grounded = true;
+                        player.dy = 0;
+                        player.y = block.y - player.height;
+                    }
+                    else if (player.dy < 0 && player.y - player.dy >= block.y + block.h) {
+                         player.dy = 0;
+                         player.y = block.y + block.h;
+                    }
+                    else if (player.x + player.width - player.speed <= block.x) {
+                        player.x = block.x - player.width;
+                    }
+                     else if (player.x + player.speed >= block.x + block.w) {
+                        player.x = block.x + block.w;
+                    }
+                }
+            }
+        });
+
+        // --- HEDEFE ULAŞMA ANI (ZAFER!) ---
+        if (player.x < goal.x + goal.w &&
+            player.x + player.width > goal.x &&
+            player.y < goal.y + goal.h &&
+            player.y + player.height > goal.y) {
+            
+            // Oyunu kazanmış say
+            gameWon = true;
+            // Zafer ekranını göster
+            victoryScreen.style.display = 'flex';
+        }
+    }
+
+    function resetGame() {
+        player.x = 100;
+        player.y = 300;
+        player.dy = 0;
+        // Kamera hemen başa dönmesin, yumuşak geçiş için bırakabiliriz veya sıfırlayabiliriz.
+        // Şimdilik sıfırlıyoruz:
+        cameraX = 0; 
+    }
+
+    // -- ÇİZİM --
+    function draw() {
+        let gradient = ctx.createLinearGradient(0, 0, 0, screenHeight);
+        gradient.addColorStop(0, "#87CEEB");
+        gradient.addColorStop(1, "#E0F7FA");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.translate(-cameraX, 0);
+
+        blocks.forEach(block => {
+            if (block.type === 1) {
+                ctx.fillStyle = "#4CAF50";
+                ctx.beginPath();
+                ctx.roundRect(block.x, block.y, block.w, block.h, 10);
+                ctx.fill();
+                ctx.strokeStyle = "#388E3C";
+                ctx.lineWidth = 4;
+                ctx.stroke();
+            } else if (block.type === 2) {
+                ctx.fillStyle = "#FF5722";
+                ctx.fillRect(block.x, block.y, block.w, block.h);
+                ctx.fillStyle = "#FFC107";
+                for(let i=0; i<block.w; i+=20) {
+                    ctx.beginPath();
+                    ctx.arc(block.x + i, block.y, 10, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+        });
+
+        if (playerImg.complete && playerImg.naturalHeight !== 0) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(player.x + player.width/2, player.y + player.height/2, player.width/2, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+            ctx.restore();
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(player.x + player.width/2, player.y + player.height/2, player.width/2, 0, Math.PI * 2);
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.arc(player.x + player.width/2, player.y + player.height/2, player.width/2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        if (goalImg.complete && goalImg.naturalHeight !== 0) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(goal.x + goal.w/2, goal.y + goal.h/2, goal.w/2, 0, Math.PI * 2);
+            ctx.closePath();
+            ctx.clip();
+            ctx.drawImage(goalImg, goal.x, goal.y, goal.w, goal.h);
+            ctx.restore();
+             ctx.fillStyle = "red";
+             ctx.font = "30px Arial";
+             ctx.fillText("❤️", goal.x + 25, goal.y - 10);
+        } else {
+            ctx.fillStyle = "#2196F3";
+            ctx.fillRect(goal.x, goal.y, goal.w, goal.h);
+            ctx.fillStyle = "white";
+            ctx.fillText("Bitiş", goal.x + 10, goal.y + 50);
+        }
+
+        ctx.restore();
+
+        if(!isMobile && !gameWon){
+             ctx.fillStyle = "#333";
+             ctx.font = "20px Segoe UI";
+             ctx.fillText("Yön Tuşları ile İlerle, Boşluk ile Zıpla", 20, 40);
+        }
+       
+    }
+
+    window.addEventListener('resize', () => {
+        screenWidth = window.innerWidth;
+        screenHeight = window.innerHeight;
+        canvas.width = screenWidth;
+        canvas.height = screenHeight;
+        if(!gameWon) resetGame();
+    });
+
+    update();
+
+</script>
+</body>
+</html>
